@@ -1,0 +1,39 @@
+# ===== 构建产出 =====
+build/
+Debug/
+
+# ===== CubeMX 生成的第三方库 =====
+cubemx/Drivers/
+cubemx/MDK-ARM/
+
+# ===== RT-Thread 内核源码 =====
+rt-thread/
+libraries/
+packages/
+
+# ===== IDE / 编辑器 =====
+.settings/
+.vscode/
+.kilo/
+
+# ===== 编译缓存与二进制 =====
+*.o
+*.bin
+*.hex
+*.elf
+*.axf
+*.map
+*.d
+*.i
+*.pyc
+*.dblite
+
+# ===== 文档（非代码） =====
+docs/
+
+# ===== 其他 =====
+__pycache__/
+cconfig.h
+rtconfig.py
+rtconfig.pyc
+.sconsign.dblite

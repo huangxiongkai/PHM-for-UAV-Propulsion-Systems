@@ -1,0 +1,49 @@
+*.pyc
+*.map
+*.dblite
+*.elf
+*.bin
+*.hex
+*.axf
+*.pdb
+*.ilk
+*.old
+build
+Debug
+*~
+*.o
+*.obj
+*.out
+*.bak
+*.dep
+*.lib
+*.i
+*.d
+.DS_Stor*
+.config 3
+.config 4
+.config 5
+*.uimg
+GPATH
+GRTAGS
+GTAGS
+.vscode
+JLinkLog.txt
+JLinkSettings.ini
+DebugConfig/
+RTE/
+settings/
+*.uvguix*
+
+# 第三方库（通过 RT-Thread ENV 工具或 CubeMX 重新生成）
+libraries/
+rt-thread/
+cubemx/Drivers/
+
+# Keil MDK 工程（本项目使用 RT-Thread Studio）
+cubemx/MDK-ARM/
+
+# 包管理缓存
+packages/packages.dbsqlite
+packages/pkgs.json
+packages/pkgs_error.json
