@@ -137,6 +137,19 @@ Supervisor (优先级10, 20ms周期)
 
 ### 3.1 Execution Plan（L2 → L3）
 
+> **重要：硬件 LED 声明**
+>
+> 开发板配备 3 颗独立单色 LED（红 PA1 / 绿 PA2 / 蓝 PA3），均为 active-low。
+> **硬件上没有"黄色 LED"**。本文档所说的"黄色"（WARNING 状态）= **红 + 绿 同亮** = 人眼感知为黄光。
+>
+> | 告警状态 | 文档描述 | 实际 LED 组合 |
+> |---------|----------|---------------|
+> | SAFE    | 绿色 ✅ | G ON，R OFF，B OFF |
+> | WARNING | **黄色** ⚠️ | **R ON + G ON，B OFF** |
+> | DANGER  | 红色 🔴 | R ON，G OFF，B OFF |
+> | HARDFAULT | 红色（急促）| R ON，G OFF，B OFF |
+> | 失联 | 蓝色 🔵 | B ON，R OFF，G OFF |
+
 ```c
 /* ---------- LED 模式（RGB 色彩 + 闪烁） ---------- */
 typedef struct {

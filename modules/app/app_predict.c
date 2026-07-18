@@ -8,6 +8,9 @@
  * 2026-04-28     12811       the first version
  */
 #include "app_predict.h"
+#include <testbench/tb.h>
+
+
 
 #define PREDICT_DT  0.005f   /* 200Hz 采样周期 (s) */
 #define K_TEMP      2.0f     /* 温度风险释放斜率 */
@@ -84,11 +87,22 @@ void Logic_thread3_entry(void *parameter)
             v_ref = raw_volt;
             freeze_cnt = 0;
             first_frame = 0;
-            rt_kprintf("[PREDICT] Cold-start T=%.1f V=%.1f\r\n", raw_temp, raw_volt);
+            {
+                int ti = (int)raw_temp;
+                int td = (int)((raw_temp - ti) * 10);
+                if (td < 0) td = -td;
+                int vi = (int)raw_volt;
+                int vd = (int)((raw_volt - vi) * 10);
+                if (vd < 0) vd = -vd;
+                rt_kprintf("[PREDICT] Cold-start T=%d.%d V=%d.%d\r\n", ti, td, vi, vd);
+            }
             continue;
         }
 
         /* ==================== 1.5 传递 acquire 层传感器故障 ==================== */
+#ifdef USE_PERF
+        uint32_t perf_t0 = perf_get_cyc();
+#endif
         if (msg_local.sensor_fault != 0)
         {
             rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
@@ -101,8 +115,8 @@ void Logic_thread3_entry(void *parameter)
         uint8_t fault_flag = 0;
 
         /* 2a. 范围检查：温度 + 电压 */
-        if (raw_temp < P.temp_fault_lo || raw_temp > P.temp_fault_hi ||
-            raw_volt < P.volt_fault_lo || raw_volt > P.volt_fault_hi)
+        if (raw_temp <= P.temp_fault_lo || raw_temp >= P.temp_fault_hi ||
+            raw_volt <= P.volt_fault_lo || raw_volt >= P.volt_fault_hi)
         {
             fault_flag = 1;
             stuck_cnt = 0;
@@ -149,8 +163,8 @@ void Logic_thread3_entry(void *parameter)
         /* 4a. 一次IIR平滑 */
         t_smooth = iir_lpf(med_t, &t_smooth, P.temp_iir_alpha);
 
-        /* 4b. 温度硬故障检测 */
-        if (t_smooth > 105.0f)
+        /* 4b. 温度硬故障检测（超过过温保护阈值直接触发 hard_fault bit0） */
+        if (t_smooth > P.temp_overtemp_prot)
             hard_fault |= 0x01;
 
         /* 4c. 离散微分 → SlewLimit → 二次IIR */
@@ -160,10 +174,19 @@ void Logic_thread3_entry(void *parameter)
         float dt_clamp = float_clamp(dt_raw, -P.temp_slew_limit, P.temp_slew_limit);
         float dt_final = iir_lpf(dt_clamp, &dt_iir_state, P.temp_diff_alpha);
 
-        /* 4d. 温度风险贡献 */
+        /* 4d. 温度风险贡献（变化率风险 + 绝对温度风险，双通道叠加） */
         float temp_risk_raw = 0.0f;
+
+        /* 4d-1. 变化率风险：超过 temp_risk_slope(1.2℃/s) 后线性增长
+         *       适用于瞬态冲击场景（如急停/堵转/失控），响应速度快 */
         if (dt_final > P.temp_risk_slope)
-            temp_risk_raw = (dt_final - P.temp_risk_slope) * K_TEMP;
+            temp_risk_raw += (dt_final - P.temp_risk_slope) * K_TEMP;
+
+        /* 4d-2. 绝对温度风险：超过 temp_abs_threshold(60℃) 后叠加
+         *       适用于慢速持续升温场景（如冷却失效），弥补单纯变化率的盲区 */
+        if (t_smooth > P.temp_abs_threshold)
+            temp_risk_raw += (t_smooth - P.temp_abs_threshold) * P.temp_abs_slope;
+
         float final_temp_risk = float_clamp(temp_risk_raw, 0.0f, P.risk_cap);
 
         /* ==================== 5. 电压特征提取链（双时间尺度） ==================== */
@@ -234,6 +257,11 @@ void Logic_thread3_entry(void *parameter)
         monitor_msg.sensor_fault      = 0;
         monitor_msg.timestamp       = rt_tick_get();
         rt_mutex_release(sensor_mutex);
+
+#ifdef USE_PERF
+        perf_update_stat(perf_get_stat(PERF_PREDICT),
+                         perf_diff_us(perf_t0, perf_get_cyc()));
+#endif
 
         if (!first_write_done)
         {

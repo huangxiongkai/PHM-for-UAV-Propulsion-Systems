@@ -13,7 +13,8 @@
 #include <middle/mid_filter.h>
 #include <drivers/bsp_adc.h>
 
-//关键分析：
+#include <testbench/tb.h>      /* tb.h 内部定义 USE_TESTBENCH，后续代码用 #ifdef 门控 */
+
 //1.【互斥量】在数据写入时，因为这个结构体也有可能被别的线程读取，有可能打断线程（防止数据竞争）。因此需要在写入数据前打开互斥锁，写入成功后重新关闭
 //RT_IPC_FLAG_PRIO (优先级唤醒)   |    RT_IPC_FLAG_FIFO (先进先出唤醒)
 
@@ -43,6 +44,16 @@ void rawdata_proc_entry(void *parameter)
         //确认数据是否收完
         rt_sem_take(alarm_sem, RT_WAITING_FOREVER);
 
+#ifdef USE_TESTBENCH
+        tb_tick();   /* 基于 rt_tick_get() 差值推进时间 */
+#endif
+
+#ifdef USE_PERF
+        // ← 在阻塞等待结束后立即记录"数据到达"时刻 + 开始计时
+        uint32_t perf_t0 = perf_get_cyc();
+        perf_mark_e2e_start();
+#endif
+
         //存入数据临时缓冲区
         uint16_t offset = (shadow_ready_half == 0) ? 0 : HALF_BUF_SZ;  // SAFE: 根据最新就绪的半区确定偏移
         for (int i = 0; i < SAMPLE_COUNT; i++)
@@ -55,12 +66,24 @@ void rawdata_proc_entry(void *parameter)
         uint16_t v_avg = fast_filing(ch_volt , SAMPLE_COUNT);
         uint16_t t_avg = fast_filing(ch_temp , SAMPLE_COUNT);
 
-        /* ---- 电压传感器开路/短路检测（原始ADC码值极端值） ---- */
+#ifdef USE_TESTBENCH
+        v_avg = tb_read_volt_raw(v_avg);  /* 未激活时透传 */
+        t_avg = tb_read_temp_raw(t_avg);
+#endif
+
+        /* ---- 电压传感器开路检测（原始ADC码值极端值） ---- */
         uint8_t volt_fault = 0;
         if (v_avg <= 10 || v_avg >= 4085)
         {
             volt_fault = 3;
         }
+        /* ---- 电压传感器短路检测（原始ADC码值极端值） ---- */
+        uint8_t temp_fault = 0;
+        if (t_avg <= 10 || t_avg >= 4085)
+        {
+            temp_fault = 1;  // 1 = NTC 故障
+        }
+        uint8_t sensor_fault = volt_fault | temp_fault;
 
         //物理量转化
         float v_now = Pot_To_SimBatteryVol(v_avg);
@@ -70,11 +93,17 @@ void rawdata_proc_entry(void *parameter)
         rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
         monitor_msg.voltage = v_now;
         monitor_msg.temperature = t_now;
-        monitor_msg.sensor_fault = volt_fault;
+        monitor_msg.sensor_fault = sensor_fault;
         rt_mutex_release(sensor_mutex);
 
                 //通过消息队列发送数据
         rt_mq_send(&monitor_mq, &monitor_msg, sizeof(monitor_msg_t));
+
+#ifdef USE_PERF
+        /* Acquire 线程执行时间统计（不含 rt_sem_take 阻塞等待） */
+        perf_update_stat(perf_get_stat(PERF_ACQUIRE),
+                         perf_diff_us(perf_t0, perf_get_cyc()));
+#endif
 
     }
 }

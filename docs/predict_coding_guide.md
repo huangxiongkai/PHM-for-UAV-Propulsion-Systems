@@ -89,11 +89,13 @@ typedef struct {
     float temp_risk_slope;       /* 1.2    温度风险起始阈值 ℃/s */
     float drop_risk_threshold;   /* 0.08   压降风险起始阈值 8% */
     float risk_cap;              /* 50.0   单项风险贡献上限 */
-    uint16_t stuck_threshold;    /* 1000   ADC卡死判定次数 */
+    uint16_t stuck_threshold;    /* 10000  ADC卡死判定次数(≈50s@200Hz) */
     float temp_fault_lo;         /* -40    NTC故障下限 ℃ */
     float temp_fault_hi;         /* 150    NTC故障上限 ℃ */
     float volt_fault_lo;         /* 14.0   电压故障下限 V */
     float volt_fault_hi;         /* 27.0   电压故障上限 V */
+    float temp_abs_threshold;    /* 60.0   绝对温度风险起始阈值 ℃ */
+    float temp_abs_slope;        /* 0.5    绝对温度风险斜率 (risk/℃) */
 } predict_param_t;
 ```
 
@@ -239,12 +241,14 @@ app_predict.c  ──┬── float_clamp(val, lo, hi)
 | `v_ref_longhold_alpha` | 0.0002 | 长推5秒后缓释 |
 | `temp_slew_limit` | 10.0 ℃/s | 温度微分限幅 |
 | `volt_slew_limit` | 20.0 V/s | 电压微分限幅 |
-| `temp_risk_slope` | 1.2 ℃/s | 温度风险起始 |
+| `temp_risk_slope` | 1.2 ℃/s | 温度风险起始（变化率） |
+| `temp_abs_threshold` | 60.0 ℃ | 绝对温度风险起始阈值 |
+| `temp_abs_slope` | 0.5 risk/℃ | 绝对温度风险斜率 |
 | `drop_risk_threshold` | 0.08 (8%) | 压降风险起始 |
 | `K_TEMP` | 2.0 | 温度风险释放斜率 |
 | `K_DROP` | 5.0 | 压降风险释放斜率 |
 | `risk_cap` | 50.0 | 单项风险上限 |
-| `stuck_threshold` | 1000 | ADC卡死判定帧数(约5s) |
+| `stuck_threshold` | 10000 | ADC卡死判定帧数(≈50s@200Hz) |
 | `temp_fault_lo/hi` | -40℃ / 150℃ | NTC故障阈值 |
 | `volt_fault_lo/hi` | 14.0V / 27.0V | 电压故障阈值 |
 | 油门冻结阈值(入) | 1700 | thr > 1700 入冻结 |

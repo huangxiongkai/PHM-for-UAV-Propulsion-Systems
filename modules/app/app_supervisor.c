@@ -11,6 +11,9 @@
 //综合绝对值与微分值，运行多级滞回状态机，判定系统健康度，并通过事件集发布状态
 #include <rtthread.h>
 #include <middle/mid_databus.h>
+#include <testbench/tb.h>
+
+
 
 
 /* ---------- 健康状态 (FSM三态) ---------- */
@@ -92,6 +95,9 @@ void supervisor_thread_entry(void *parameter)
 
     while (1)
     {
+#ifdef USE_PERF
+        uint32_t perf_t0 = perf_get_cyc();
+#endif
         /* 心跳刷新
          * 上面line 82已经给过初值了 */
         monitor_msg.supervisor_heartbeat = rt_tick_get();
@@ -113,6 +119,8 @@ void supervisor_thread_entry(void *parameter)
             int16_t hi_x10 = (int16_t)((100.0f - risk_sum) * 10.0f);
 
             /* 直接定态 */
+            health_state = evaluate_initial_state(hi_x10);
+
             /* 首帧告警融合: 若信号量等待阶段已锁存故障(如Predict初始化超时),
              * 首帧上报值必须是HARDFAULT并同步真实fault_cause,
              * 不能被刚算出来的health_state盲目覆盖成SAFE */
@@ -248,6 +256,9 @@ void supervisor_thread_entry(void *parameter)
                 default:              evt_bit = EVT_SAFE;      break;
             }
 
+#ifdef USE_PERF
+            perf_mark_event_send();
+#endif
             rt_event_send(&adc_event, evt_bit);
 
             last_alarm = final_alarm;
@@ -255,6 +266,11 @@ void supervisor_thread_entry(void *parameter)
 
                 /* ===== Layer9: 看门狗预留(当前不实现) ===== */
         /* TODO: 未来实现 acquire_alive / predict_alive */
+
+#ifdef USE_PERF
+        perf_update_stat(perf_get_stat(PERF_SUPERVISOR),
+                         perf_diff_us(perf_t0, perf_get_cyc()));
+#endif
 
         /* 20ms周期 */
         rt_thread_mdelay(20);

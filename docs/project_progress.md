@@ -1,7 +1,7 @@
 # 项目进展报告
 
 **最后更新**: 2026-07-13  
-**当前状态**: Phase 4 编码完成，**联调阶段 — CRITICAL bug 已修复，剩余 HIGH/MEDIUM 待处理**
+**当前状态**: Phase 4 编码完成，**联调阶段 — CRITICAL/HIGH/MEDIUM bug 全部修复**
 
 ---
 
@@ -97,7 +97,7 @@
 
 ---
 
-### 🟠 HIGH-01: Actuator 线程栈大小和优先级未使用宏
+### ✅ HIGH-01: Actuator 线程栈大小和优先级未使用宏 — 已修复
 
 **位置**: `modules/app/app_actuator.c` → `app_actuator_init()`  
 **现象**: `rt_thread_create` 直接写死 `512 / 10`，而不是 `ACTUATOR_STACK_SIZE(1536) / ACTUATOR_PRIORITY(11)`  
@@ -106,19 +106,21 @@
 - 优先级 10 与 Supervisor 相同，失去"被抢占"的实时性保证，与架构文档不符
 
 **修复**: 把 `512, 10` 改成 `ACTUATOR_STACK_SIZE, ACTUATOR_PRIORITY`
+**状态**: ✅ 已修复 (2026-07-14)
 
 ---
 
-### 🟡 MEDIUM-01: Actuator while(1) 末尾多余 rt_thread_mdelay(100)
+### ✅ MEDIUM-01: Actuator while(1) 末尾多余 rt_thread_mdelay(100) — 已修复
 
 **位置**: `modules/app/app_actuator.c` → `actuator_thread_entry()` 末尾  
 **现象**: `rt_event_recv` 已经按 500ms 超时阻塞，再加 `rt_thread_mdelay(100)` 导致响应延迟最大 600ms  
 **影响**: 不符合架构设计中"500ms 心跳检测窗口"的预期，告警响应被无谓推迟  
 **修复**: 删除 `rt_thread_mdelay(100);` 这一行
+**状态**: ✅ 已修复 (2026-07-14)
 
 ---
 
-### 🟡 MEDIUM-02: bsp_beep.h 暴露了 static 函数声明
+### ✅ MEDIUM-02: bsp_beep.h 暴露了 static 函数声明 — 已修复
 
 **位置**: `modules/drivers/bsp_beep.h` 第 15 行  
 **现象**: `static void calc_pwm_param(...)` 出现在头文件  
@@ -225,9 +227,9 @@
 ### 立即执行（修复联调 bug）
 - [x] ~~**修复 CRITICAL-01**: 在 `app_supervisor.c` 末尾添加 `INIT_APP_EXPORT(app_supervisor_init);`~~ ✅ 已完成
 - [x] ~~**修复 CRITICAL-02**: `app_actuator.c` `dispatch_plan` 蜂鸣器分支 2 条件改为 `on_ms == 0`~~ ✅ 已完成
-- [ ] **修复 HIGH-01**: `app_actuator.c` 创建线程参数改用宏
-- [ ] 修复 MEDIUM-01: 删除 `actuator_thread_entry` 末尾的 `rt_thread_mdelay(100);`
-- [ ] 修复 MEDIUM-02: `bsp_beep.h` 调整声明
+- [x] ~~**修复 HIGH-01**: \pp_actuator.c\ 创建线程参数改用宏~~ ✅ 已完成
+- [x] ~~修复 MEDIUM-01: 删除 \ctuator_thread_entry\ 末尾的 t_thread_mdelay(100);\~~ ✅ 已完成
+- [x] ~~修复 MEDIUM-02: \sp_beep.h\ 调整声明~~ ✅ 已完成
 - [ ] 烧录验证：ALM/FC 数值正常、SAFE 时绿常亮静音、WARNING/DANGER/HARDFAULT/Supervisor Lost 各分支可切换
 
 ### 短期（文档同步）

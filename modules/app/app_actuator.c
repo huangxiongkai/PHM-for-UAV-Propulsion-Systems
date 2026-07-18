@@ -13,7 +13,11 @@
 #include <rtthread.h>
 #include <middle/mid_databus.h>
 #include <drivers/bsp_beep.h>
+#include <debug/debug_stack.h>
 #include "main.h"
+#include <testbench/tb.h>
+
+
 
 
 extern rt_mutex_t sensor_mutex;
@@ -292,6 +296,10 @@ void actuator_thread_entry(void *parameter)
     monitor_msg_t local;
     uint8_t     supervisor_lost;
     const action_plan_t *plan;
+    static rt_tick_t last_report_tick = 0;  /* 栈诊断报告计时 */
+#ifdef USE_PERF
+    static rt_tick_t last_perf_tick = 0;
+#endif
 
     /* ===== 绑定回调函数下 ===== */
     rt_timer_init(&led_timer,  "act_led",  led_timer_callback,  RT_NULL,
@@ -305,12 +313,24 @@ void actuator_thread_entry(void *parameter)
 
     while (1)
     {
+#ifdef USE_PERF
+        /* SAFE: perf_t0 在 recv 后计时，仅衡量实际执行耗时，不含阻塞等待 */
+        uint32_t perf_evt_us = 0;
+        uint32_t perf_e2e_us = 0;
+#endif
+
          /* L1: 带超时等待 Supervisor 告警事件 (500ms 超时, 非永久阻塞) */
         rt_event_recv(&adc_event,
                       EVT_SAFE | EVT_WARNING | EVT_DANGER | EVT_HARDFAULT,
                       RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
                       SUPERVISOR_TIMEOUT_TICKS,
                       &e);
+
+#ifdef USE_PERF
+        uint32_t perf_t0 = perf_get_cyc();
+        perf_evt_us = perf_get_event_latency_us();
+        perf_e2e_us = perf_get_e2e_latency_us();
+#endif
 
         /* L1: 无论事件是否超时都读快照 (timestamp 陈旧度判断用) */
         rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
@@ -327,7 +347,30 @@ void actuator_thread_entry(void *parameter)
         /* L3: 幂等分发 */
         dispatch_plan(plan);
 
-        rt_thread_mdelay(100);
+#ifdef USE_PERF
+        perf_update_stat(perf_get_stat(PERF_ACTUATOR),
+                         perf_diff_us(perf_t0, perf_get_cyc()));
+
+        if ((rt_tick_get() - last_perf_tick) >= RT_TICK_PER_SECOND)
+        {
+            const perf_stat_t *acq = perf_get_stat(PERF_ACQUIRE);
+            const perf_stat_t *pred = perf_get_stat(PERF_PREDICT);
+            const perf_stat_t *sup = perf_get_stat(PERF_SUPERVISOR);
+            const perf_stat_t *act = perf_get_stat(PERF_ACTUATOR);
+            uint32_t cpu_bp = perf_get_cpu_usage_bp();
+            rt_kprintf("[PERF] Acq=%u Pred=%u Sup=%u Act=%u Evt=%uus E2E=%uus CPU=%u.%02u%%\r\n",
+                       acq->avg_us, pred->avg_us, sup->avg_us, act->avg_us,
+                       perf_evt_us, perf_e2e_us, cpu_bp / 100, cpu_bp % 100);
+            last_perf_tick = rt_tick_get();
+        }
+#endif
+
+        /* ===== 调试: 每 10 秒打印一次所有线程栈峰值 ===== */
+        if ((rt_tick_get() - last_report_tick) >= 10000)
+        {
+            debug_stack_report_all();
+            last_report_tick = rt_tick_get();
+        }
     }
 }
 
@@ -336,8 +379,8 @@ int app_actuator_init(void)
     actuator_thread = rt_thread_create("actuator",
                                     actuator_thread_entry,
                                     RT_NULL,
-                                    1536,
-                                    11,
+                                    ACTUATOR_STACK_SIZE,
+                                    ACTUATOR_PRIORITY,
                                     20);
     if (actuator_thread != RT_NULL)
     {
@@ -351,3 +394,4 @@ int app_actuator_init(void)
     return RT_EOK;
 }
 INIT_APP_EXPORT(app_actuator_init);
+
