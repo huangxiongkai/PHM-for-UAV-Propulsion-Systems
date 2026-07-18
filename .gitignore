@@ -1,49 +1,36 @@
+# IDE 配置文件
+.config
+.config.old
+.cproject
+.project
+.settings/
+
+# 第三方工具
+.kilo/
+.mimocode/
+.kilocodeignore
+
+# VS Code
+.vscode/
+
+# 临时脚本
+sconscript_update.bat
+
+# 构建输出
+build/
+Debug/
+__pycache__/
+.sconsign.dblite
 *.pyc
-*.map
-*.dblite
-*.elf
-*.bin
-*.hex
-*.axf
-*.pdb
-*.ilk
-*.old
-build
-Debug
-*~
-*.o
-*.obj
-*.out
-*.bak
-*.dep
-*.lib
-*.i
-*.d
-.DS_Stor*
-.config 3
-.config 4
-.config 5
-*.uimg
-GPATH
-GRTAGS
-GTAGS
-.vscode
-JLinkLog.txt
-JLinkSettings.ini
-DebugConfig/
-RTE/
-settings/
-*.uvguix*
 
-# 第三方库（通过 RT-Thread ENV 工具或 CubeMX 重新生成）
-libraries/
-rt-thread/
+# CubeMX 备份/生成文件
 cubemx/Drivers/
-
-# Keil MDK 工程（本项目使用 RT-Thread Studio）
 cubemx/MDK-ARM/
+cubemx/Inc/*.bak
+cubemx/Src/*.bak
 
-# 包管理缓存
+# RT-Thread packages
 packages/packages.dbsqlite
 packages/pkgs.json
 packages/pkgs_error.json
+rt-thread/
