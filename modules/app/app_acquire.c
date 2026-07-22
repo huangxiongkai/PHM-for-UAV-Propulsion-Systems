@@ -20,21 +20,21 @@
 
 /* 任务拆解：提取DMA数据(DMA触发中断后，通过发送信号量，通知线程一开始工作)  +  原始数据去噪 */
 extern rt_sem_t alarm_sem;
-extern volatile uint8_t shadow_ready_half;  // SAFE: 0=前半段就绪, 1=后半段就绪
+extern volatile uint8_t shadow_ready_half;  // 0=前半段就绪, 1=后半段就绪
 
 /* 静态线程 */
 ALIGN(RT_ALIGN_SIZE)
 static struct rt_thread rawdata_thread1;
 static rt_uint8_t rawdata_rstack[1024];
 
-rt_mutex_t sensor_mutex = RT_NULL;  // SAFE: 非static，供display线程通过extern访问
+rt_mutex_t sensor_mutex = RT_NULL;  // 非static，供display线程通过extern访问
 
 
 void rawdata_proc_entry(void *parameter)
 {
     sensor_mutex = rt_mutex_create("sens_mtx", RT_IPC_FLAG_PRIO);
 
-    uint16_t *raw_buf = adc_get_shadow_buf();  // SAFE: 从影子缓冲区读取，非活跃DMA缓冲
+    uint16_t *raw_buf = adc_get_shadow_buf();  // 从影子缓冲区读取，非活跃DMA缓冲
     uint16_t ch_volt[SAMPLE_COUNT];
     uint16_t ch_temp[SAMPLE_COUNT];
 
@@ -55,7 +55,7 @@ void rawdata_proc_entry(void *parameter)
 #endif
 
         //存入数据临时缓冲区
-        uint16_t offset = (shadow_ready_half == 0) ? 0 : HALF_BUF_SZ;  // SAFE: 根据最新就绪的半区确定偏移
+        uint16_t offset = (shadow_ready_half == 0) ? 0 : HALF_BUF_SZ;  // 根据最新就绪的半区确定偏移
         for (int i = 0; i < SAMPLE_COUNT; i++)
         {
             ch_volt[i] = raw_buf[offset + i * 2];

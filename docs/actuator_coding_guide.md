@@ -206,133 +206,32 @@ typedef struct {
 >
 > 因此 `resolve_policy` 签名接收 `hard_fault` 和 `sensor_fault` 而非单一的 `fault_cause`。
 
+**函数签名**：
 ```c
-/* ---------- L2: Policy Table ---------- */
 static action_plan_t resolve_policy(uint8_t alarm_level,
                                      uint8_t hard_fault,
                                      uint8_t sensor_fault,
                                      rt_bool_t supervisor_lost)
-{
-    action_plan_t plan;
-
-    /* 优先级最高: Supervisor通信丢失 (Actuator自主判定, 不依赖alarm_level) */
-    if (supervisor_lost)
-    {
-        /* 蓝色常亮 + 4kHz长鸣 */
-        plan.led  = (led_mode_t){.r_on = RT_FALSE, .g_on = RT_FALSE,
-                                  .b_on = RT_TRUE,  .blink = RT_FALSE,
-                                  .blink_period_ms = 0};
-        plan.beep = (beep_mode_t){.pwm_freq = 4000, .on_ms = 0,
-                                   .inter_beep_ms = 0, .group_gap_ms = 0,
-                                   .beats_per_group = 0, .is_mute = RT_FALSE};
-        return plan;
-    }
-
-    if (alarm_level == ALARM_HARDFAULT)
-    {
-        /* 红色快闪 + 4kHz急促连续鸣 */
-        plan.led  = (led_mode_t){.r_on = RT_TRUE,  .g_on = RT_FALSE,
-                                  .b_on = RT_FALSE, .blink = RT_TRUE,
-                                  .blink_period_ms = 100};
-        plan.beep = (beep_mode_t){.pwm_freq = 4000, .on_ms = 50,
-                                   .inter_beep_ms = 50, .group_gap_ms = 0,
-                                   .beats_per_group = 0, .is_mute = RT_FALSE};
-    }
-    else if (alarm_level == ALARM_DANGER)
-    {
-        /* 红色快闪 + 3kHz双连鸣 */
-        plan.led  = (led_mode_t){.r_on = RT_TRUE,  .g_on = RT_FALSE,
-                                  .b_on = RT_FALSE, .blink = RT_TRUE,
-                                  .blink_period_ms = 100};
-        plan.beep = (beep_mode_t){.pwm_freq = 3000, .on_ms = 100,
-                                   .inter_beep_ms = 100, .group_gap_ms = 1000,
-                                   .beats_per_group = 2, .is_mute = RT_FALSE};
-    }
-    else if (alarm_level == ALARM_WARNING)
-    {
-        /* 黄色慢闪 + 3kHz单次短鸣 */
-        plan.led  = (led_mode_t){.r_on = RT_TRUE,  .g_on = RT_TRUE,
-                                  .b_on = RT_FALSE, .blink = RT_TRUE,
-                                  .blink_period_ms = 500};
-        plan.beep = (beep_mode_t){.pwm_freq = 3000, .on_ms = 100,
-                                   .inter_beep_ms = 0, .group_gap_ms = 2000,
-                                   .beats_per_group = 1, .is_mute = RT_FALSE};
-    }
-    else /* ALARM_SAFE */
-    {
-        /* 绿色常亮 + 静音 */
-        plan.led  = (led_mode_t){.r_on = RT_FALSE, .g_on = RT_TRUE,
-                                  .b_on = RT_FALSE, .blink = RT_FALSE,
-                                  .blink_period_ms = 0};
-        plan.beep = (beep_mode_t){.pwm_freq = 0, .on_ms = 0,
-                                   .inter_beep_ms = 0, .group_gap_ms = 0,
-                                   .beats_per_group = 0, .is_mute = RT_TRUE};
-    }
-
-    return plan;
-}
 ```
+
+**查表逻辑**：supervisor_lost 优先级最高 → ALARM_HARDFAULT → ALARM_DANGER → ALARM_WARNING → ALARM_SAFE，返回对应的 `{led_mode_t, beep_mode_t}` 组合。具体参数见 3.1 节的 RGB 色彩映射表和蜂鸣器告警映射表。
 
 ---
 
 ## 四、Actuator 主线程（L1 + L3 胶合）
 
+**关键宏定义**：
 ```c
 #define ACTUATOR_EVENT_TIMEOUT_TICKS   ((RT_TICK_PER_SECOND * 500) / 1000)  /* 500ms */
 #define SUPERVISOR_LOST_TICKS          ((RT_TICK_PER_SECOND * 500) / 1000)  /* 500ms */
-
-/* 幂等检查用: 初始化为SAFE状态 */
-static action_plan_t last_plan = {
-    .led  = {.r_on = RT_FALSE, .g_on = RT_FALSE, .b_on = RT_FALSE,
-             .blink = RT_FALSE, .blink_period_ms = 0},
-    .beep = {.pwm_freq = 0, .on_ms = 0, .inter_beep_ms = 0,
-             .group_gap_ms = 0, .beats_per_group = 0, .is_mute = RT_TRUE}
-};
-
-static void actuator_thread_entry(void *parameter)
-{
-    rt_uint32_t recv_evt;
-    monitor_msg_t snapshot;
-
-    while (1)
-    {
-        /* ===== L1: Event Receive (带超时, 非永久阻塞) ===== */
-        rt_err_t ret = rt_event_recv(adc_event,
-                                      EVT_SAFE | EVT_WARNING | EVT_DANGER | EVT_HARDFAULT,
-                                      RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
-                                      ACTUATOR_EVENT_TIMEOUT_TICKS,
-                                      &recv_evt);
-
-        /* ===== L1: Context Snapshot (无论是否超时都要读, 判断存活用) ===== */
-        rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
-        snapshot = monitor_msg;   /* 结构体整体拷贝 */
-        rt_mutex_release(sensor_mutex);
-
-        rt_bool_t supervisor_lost =
-            ((rt_tick_get() - snapshot.timestamp) > SUPERVISOR_LOST_TICKS);
-
-        /* 事件超时且Supervisor仍存活 → 只是长期SAFE没发事件, 属正常, 跳过本轮 */
-        if (ret != RT_EOK && !supervisor_lost)
-        {
-            continue;
-        }
-
-        /* ===== L2: Policy Table ===== */
-        action_plan_t plan = resolve_policy(snapshot.alarm_level,
-                                             snapshot.hard_fault,
-                                             snapshot.sensor_fault,
-                                             supervisor_lost);
-
-        /* ===== L3: Dispatcher (幂等检查, struct整体比较) ===== */
-        if (rt_memcmp(&plan, &last_plan, sizeof(action_plan_t)) != 0)
-        {
-            drv_led_set(plan.led);
-            drv_beep_set(plan.beep);
-            last_plan = plan;
-        }
-    }
-}
 ```
+
+**主循环逻辑**：
+1. `rt_event_recv` 带 500ms 超时等待 Supervisor 告警事件
+2. 无论是否超时都读 `monitor_msg` 快照（用 `timestamp` 陈旧度判断 Supervisor 是否存活）
+3. 事件超时且 Supervisor 仍存活 → 只是长期 SAFE 没发事件，跳过本轮
+4. 调用 `resolve_policy` 查表得到执行计划
+5. 幂等检查：与上次 plan 相同则跳过 Driver 调用
 
 **要点说明**：
 - `rt_event_recv` 超时不再等价于"故障"，必须叠加 `timestamp` 陈旧度判断，这一点在讨论阶段已经反复确认过，是本设计中最容易踩坑的地方。
@@ -359,196 +258,35 @@ RT-Thread 的软件定时器分为一次性和周期性两种模式，周期定�
 
 ### 5.1 LED Driver
 
-```c
-#include "main.h"      /* LED_R_Pin, LED_G_Pin, LED_B_Pin 等宏 */
-#include "bsp_beep.h"  /* beep_stop, pwm_set */
+**接口**：`drv_led_set(led_mode_t mode)` — 设置 LED 颜色+闪烁模式
 
-/* ---------- LED 定时器 + 状态 ---------- */
-static rt_timer_t led_timer = RT_NULL;
-static rt_bool_t  led_phase = RT_FALSE;      /* 闪烁翻转: TRUE=亮, FALSE=灭 */
-static led_mode_t led_current;                /* 当前LED模式(回调中读取) */
-
-/**
- * @brief  写三路GPIO电平（active-low反转收敛在此处）
- * @param  r/g/b  逻辑电平: TRUE=亮, FALSE=灭
- */
-static void drv_led_write(rt_bool_t r, rt_bool_t g, rt_bool_t b)
-{
-    /* Active-low: GPIO_PIN_RESET=亮, GPIO_PIN_SET=灭 */
-    HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin,
-                       r ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin,
-                       g ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin,
-                       b ? GPIO_PIN_RESET : GPIO_PIN_SET);
-}
-
-static void led_timer_callback(void *parameter)
-{
-    led_phase = !led_phase;
-    if (led_phase)
-    {
-        drv_led_write(led_current.r_on, led_current.g_on, led_current.b_on);
-    }
-    else
-    {
-        drv_led_write(RT_FALSE, RT_FALSE, RT_FALSE);
-    }
-}
-
-/**
- * @brief  设置LED模式（颜色+闪烁）
- * @param  mode  led_mode_t结构体
- */
-static void drv_led_set(led_mode_t mode)
-{
-    if (led_timer != RT_NULL)
-    {
-        rt_timer_stop(led_timer);
-    }
-
-    led_current = mode;
-
-    if (mode.blink)
-    {
-        rt_tick_t ticks = (RT_TICK_PER_SECOND * mode.blink_period_ms) / 1000;
-        rt_timer_control(led_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-        led_phase = RT_TRUE;
-        drv_led_write(mode.r_on, mode.g_on, mode.b_on);
-        rt_timer_start(led_timer);
-    }
-    else
-    {
-        drv_led_write(mode.r_on, mode.g_on, mode.b_on);
-    }
-}
-```
+**实现要点**：
+- `drv_led_write(r, g, b)` 封装 active-low 反转逻辑（GPIO_PIN_RESET=亮）
+- 闪烁模式使用 `rt_timer`（SOFT_TIMER + PERIODIC），回调中翻转 led_phase
+- 停止旧 timer → 更新 led_current → 启动新 timer（或直接常亮）
 
 ### 5.2 Beep Driver（分组鸣叫状态机）
 
-```c
-/* ---------- 蜂鸣器定时器 + 状态机变量 ---------- */
-static rt_timer_t beep_timer = RT_NULL;
-static beep_mode_t beep_current;              /* 当前蜂鸣模式 */
+**接口**：`drv_beep_set(beep_mode_t mode)` — 设置蜂鸣器音高+节奏
 
-typedef enum {
-    BEEP_PHASE_ON = 0,   /* 当前正在发声 */
-    BEEP_PHASE_OFF,      /* 当前处于静默 */
-} beep_phase_t;
+**状态机设计**：
+- 两相状态：`BEEP_PHASE_ON`（发声）/ `BEEP_PHASE_OFF`（静默）
+- 回调驱动：timer 到期 → 切换相位 → 重设计时器时长
+- 三种模式分支：静音（is_mute）/ 长鸣（on_ms=0）/ 分组鸣叫（状态机接管）
 
-static beep_phase_t beep_phase = BEEP_PHASE_OFF;
-static rt_uint8_t   beat_count = 0;          /* 当前组已完成的beep数 */
-static rt_bool_t    from_group_gap = RT_FALSE; /* 是否刚从组间静默回来 */
-
-static void beep_timer_callback(void *parameter)
-{
-    if (beep_phase == BEEP_PHASE_ON)
-    {
-        /* 发声结束 → 关闭PWM */
-        beep_stop();
-        beat_count++;
-
-        if (beep_current.beats_per_group > 0 &&
-            beat_count < beep_current.beats_per_group)
-        {
-            /* 组内还有beep → 短间隔(inter_beep) */
-            rt_tick_t ticks = (RT_TICK_PER_SECOND * beep_current.inter_beep_ms) / 1000;
-            rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-        }
-        else if (beep_current.group_gap_ms > 0)
-        {
-            /* 组完成 → 长间隔(group_gap) */
-            rt_tick_t ticks = (RT_TICK_PER_SECOND * beep_current.group_gap_ms) / 1000;
-            rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-        }
-        else
-        {
-            /* 连续模式(无分组) → 短间隔后继续 */
-            rt_tick_t ticks = (RT_TICK_PER_SECOND * beep_current.inter_beep_ms) / 1000;
-            rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-        }
-        beep_phase = BEEP_PHASE_OFF;
-    }
-    else /* BEEP_PHASE_OFF */
-    {
-        /* 静默结束 → 开启PWM */
-        if (from_group_gap)
-        {
-            beat_count = 0;
-            from_group_gap = RT_FALSE;
-        }
-        pwm_set(beep_current.pwm_freq, 50);
-
-        if (beep_current.beats_per_group > 0 &&
-            beat_count >= beep_current.beats_per_group)
-        {
-            /* 刚从group_gap回来 → 下一相是group_gap */
-            rt_tick_t ticks = (RT_TICK_PER_SECOND * beep_current.group_gap_ms) / 1000;
-            rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-            from_group_gap = RT_TRUE;
-        }
-        else
-        {
-            /* 正常beep持续 */
-            rt_tick_t ticks = (RT_TICK_PER_SECOND * beep_current.on_ms) / 1000;
-            rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-        }
-        beep_phase = BEEP_PHASE_ON;
-    }
-}
-
-/**
- * @brief  设置蜂鸣器模式（音高+节奏）
- * @param  mode  beep_mode_t结构体
- */
-static void drv_beep_set(beep_mode_t mode)
-{
-    if (beep_timer != RT_NULL)
-    {
-        rt_timer_stop(beep_timer);
-    }
-
-    beep_current = mode;
-    beep_phase = BEEP_PHASE_OFF;
-    beat_count = 0;
-    from_group_gap = RT_FALSE;
-
-    /* 静音 */
-    if (mode.is_mute)
-    {
-        beep_stop();
-        return;
-    }
-
-    /* 长鸣(Supervisor失联): on_ms=0 → 直接开PWM, 不启timer */
-    if (mode.on_ms == 0)
-    {
-        pwm_set(mode.pwm_freq, 50);
-        return;
-    }
-
-    /* 分组/连续鸣叫: 启动timer, 状态机接管 */
-    rt_tick_t ticks = (RT_TICK_PER_SECOND * mode.on_ms) / 1000;
-    rt_timer_control(beep_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
-    rt_timer_start(beep_timer);
-}
-```
+**分组鸣叫逻辑**：
+- 每次发声结束 → beat_count++
+- 组内还有 beep → 设 inter_beep_ms 短间隔
+- 组完成 → 设 group_gap_ms 长间隔
+- 连续模式（beats_per_group=0）→ 一直用 inter_beep_ms
 
 ### 5.3 初始化
 
-```c
-/* ---------- 初始化 (在Actuator线程创建前调用一次) ---------- */
-static void actuator_driver_init(void)
-{
-    led_timer = rt_timer_create("led_tmr", led_timer_callback, RT_NULL,
-                                 (RT_TICK_PER_SECOND * 500) / 1000,
-                                 RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+**创建两个软件定时器**：
+- `led_timer`：500ms 周期，用于 LED 闪烁
+- `beep_timer`：100ms 周期，用于蜂鸣器分组鸣叫
 
-    beep_timer = rt_timer_create("beep_tmr", beep_timer_callback, RT_NULL,
-                                  (RT_TICK_PER_SECOND * 100) / 1000,
-                                  RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
-}
-```
+均使用 `RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER`。
 
 **未来替换路径（仅作说明，不需要现在实现）**：`drv_led_set` / `drv_beep_set`
 换成 `drv_uart_send()` / `drv_can_send()` 时，L1~L3 不需要任何改动——这正是

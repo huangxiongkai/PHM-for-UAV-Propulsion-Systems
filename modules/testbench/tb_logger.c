@@ -132,7 +132,7 @@ void tb_log_csv(monitor_msg_t *msg)
 
 #ifdef USE_PERF
     {
-        /* SAFE: CSV 输出各线程最近一次执行时间（last_us）+ Event 响应时间 */
+        /* CSV 输出各线程最近一次执行时间（last_us）+ Event 响应时间 */
         const perf_stat_t *acq  = perf_get_stat(PERF_ACQUIRE);
         const perf_stat_t *pred = perf_get_stat(PERF_PREDICT);
         const perf_stat_t *sup  = perf_get_stat(PERF_SUPERVISOR);

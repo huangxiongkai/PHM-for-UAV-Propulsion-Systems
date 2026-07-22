@@ -8,7 +8,7 @@
  * 2026-07-15     12811       the first version
  */
 
-/* SAFE: 必须先包含 bsp_perf.h 以获取 USE_PERF 宏，再用 #ifdef 门控编译单元 */
+/* 必须先包含 bsp_perf.h 以获取 USE_PERF 宏，再用 #ifdef 门控编译单元 */
 #include "bsp_perf.h"
 
 #ifdef USE_PERF

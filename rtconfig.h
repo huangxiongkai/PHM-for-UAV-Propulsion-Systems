@@ -13,6 +13,7 @@
 #define RT_USING_OVERFLOW_CHECK
 #define IDLE_THREAD_STACK_SIZE 256
 #define RT_USING_TIMER_SOFT
+#define RT_USING_IDLE_HOOK 1
 #define RT_TIMER_THREAD_PRIO 4
 #define RT_TIMER_THREAD_STACK_SIZE 512
 #define RT_DEBUG
@@ -48,17 +49,6 @@
 
 /* Command shell */
 
-#define RT_USING_FINSH
-#define FINSH_THREAD_NAME "tshell"
-#define FINSH_USING_SYMTAB
-#define FINSH_USING_DESCRIPTION
-#define FINSH_THREAD_PRIORITY 20
-#define FINSH_THREAD_STACK_SIZE 4096
-#define FINSH_CMD_SIZE 80
-#define FINSH_USING_MSH
-#define FINSH_USING_MSH_DEFAULT
-#define FINSH_USING_MSH_ONLY
-#define FINSH_ARG_MAX 10
 /* end of Command shell */
 /* end of RT-Thread Components */
 #define RT_STUDIO_BUILT_IN

@@ -22,7 +22,7 @@ void log_show_thread_entry(void *parameter)
 
     while (1)
     {
-        rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);          // SAFE: 防止读取到半更新的 monitor_msg
+        rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);          // 防止读取到半更新的 monitor_msg
         monitor_msg_t local_copy = monitor_msg;                   // 快照副本
         rt_mutex_release(sensor_mutex);
 

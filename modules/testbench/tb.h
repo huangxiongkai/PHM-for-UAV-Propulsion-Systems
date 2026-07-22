@@ -17,7 +17,7 @@
 #define USE_TESTBENCH   /* 注释此行即可关闭testbench，Release 零开销 */
 
 /* ---- 数据测试 开关 ---- */
-/* SAFE: USE_PERF 由 bsp_perf.h 统一管理；此处通过包含传递，确保 tb_logger.c 等模块可见 */
+/* USE_PERF 由 bsp_perf.h 统一管理；此处通过包含传递，确保 tb_logger.c 等模块可见 */
 
 
 #include <drivers/bsp_perf.h>

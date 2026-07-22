@@ -34,3 +34,9 @@ packages/packages.dbsqlite
 packages/pkgs.json
 packages/pkgs_error.json
 rt-thread/
+
+# STM32 HAL 库
+libraries/
+
+# 工作计划
+plans/

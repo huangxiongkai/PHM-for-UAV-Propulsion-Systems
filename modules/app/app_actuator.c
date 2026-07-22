@@ -18,27 +18,8 @@
 #include <testbench/tb.h>
 
 
-
-
 extern rt_mutex_t sensor_mutex;
 
-#if 0
-数据结构定义 (Step 1 完成)
-   ↓
-POLICY_* 宏 + g_policy_table[] (Step 2 完成)
-   ↓
-resolve_policy()      ← Step 3 在这里
-   ↓
-drv_led_write() / drv_beep_freq()  ← Step 4
-   ↓
-定时器回调            ← Step 5
-   ↓
-dispatch_plan()       ← Step 6
-   ↓
-actuator_thread_entry()  ← Step 7
-   ↓
-app_actuator_init() + INIT_APP_EXPORT  ← Step 8
-#endif
 
 /* ===== 数据结构定义 ===== */
 typedef struct {
@@ -63,10 +44,10 @@ typedef struct {
     beep_mode_t beep;
 } action_plan_t;
 
-/* 线程配置宏*/
+//线程配置宏
 #define ACTUATOR_PRIORITY 11
 #define ACTUATOR_STACK_SIZE 1536
-/* 超时配置宏*/
+//超时配置宏
 #define SUPERVISOR_TIMEOUT_MS 500u
 #define SUPERVISOR_TIMEOUT_TICKS \
     ((rt_tick_t)((RT_TICK_PER_SECOND * SUPERVISOR_TIMEOUT_MS) / 1000))
@@ -123,13 +104,11 @@ static const action_plan_t g_policy_table[5] =
     },
 };
 
-/* ===== L2: Policy Table 查表函数 ===== */
+
 /**
- * @brief  根据告警上下文返回对应的执行计划
+ * @brief  查表获取执行策略
  * @param  alarm_level      ALARM_SAFE / WARNING / DANGER / HARDFAULT
  * @param  supervisor_lost  1=Supervisor心跳超时, 0=正常
- * @return action_plan_t 指针 (const, 调用方只读)
- * @note   supervisor_lost 优先级最高 (覆盖 alarm_level)
  */
 static const action_plan_t* resolve_policy(uint8_t alarm_level,uint8_t supervisor_lost)
 {
@@ -148,7 +127,7 @@ static const action_plan_t* resolve_policy(uint8_t alarm_level,uint8_t superviso
 }
 
 
-/* ===== L4 Driver Adapter ===== */
+/* =====  LED和蜂鸣器驱动 ===== */
 #define LED_LEVEL_ON     GPIO_PIN_RESET
 #define LED_LEVEL_OFF    GPIO_PIN_SET
 static void drv_led_write(uint8_t r, uint8_t g, uint8_t b)
@@ -167,7 +146,7 @@ static void drv_beep_freq(uint32_t freq)
 }
 
 
-/* ===== 换算成ms并保护不小于1ms ===== */
+/* ===== 将tick换算成ms并保护定时器传入参数不小于1ms ===== */
 static inline rt_tick_t ms_to_tick_safe(uint16_t ms)
 {
     rt_tick_t t = (rt_tick_t)((RT_TICK_PER_SECOND * (uint32_t)ms) / 1000);
@@ -193,33 +172,33 @@ static void beep_timer_callback(void *parameter)
     const beep_mode_t *bp = &current_plan.beep;
     rt_tick_t t;
 
-    /* 防御: 静音或长鸣不应进入此状态机 */
+    //防御: 静音或长鸣不应进入此状态机
     if (bp->is_mute || bp->on_ms == 0)
         return;
 
     if (beep_phase == 0)
     {
-        /* 一次鸣响结束 → 静音 */
+        //一次鸣响结束 → 静音
         drv_beep_freq(0);
         beep_count++;
 
         if (bp->beats_per_group > 0 && beep_count >= bp->beats_per_group)
         {
-            /* 一组鸣响完成 → 进入组间间隔 */
+            //一组鸣响完成 → 进入组间间隔
             beep_count = 0;
             beep_phase = 2;
             t = ms_to_tick_safe(bp->group_gap_ms);
         }
         else
         {
-            /* 组内还有 beep → 进入组内间隔 */
+            //组内还有 beep → 进入组内间隔
             beep_phase = 1;
             t = ms_to_tick_safe(bp->inter_beep_ms);
         }
     }
     else
     {
-        /* 组内间隔(1)或组间间隔(2)结束 → 直接开始下一次鸣响 */
+        //组内间隔(1)或组间间隔(2)结束 → 直接开始下一次鸣响
         beep_phase = 0;
         drv_beep_freq(bp->pwm_freq);
         t = ms_to_tick_safe(bp->on_ms);
@@ -240,18 +219,18 @@ static void dispatch_plan(const action_plan_t *new_plan)
 {
     rt_tick_t t;
 
-    /* ① 幂等检查必须放在最前面, 没变化直接return, 完全不碰定时器 */
+    // 先进行幂等分发，若事件未变化则直接返回
     if (rt_memcmp(new_plan, &last_plan, sizeof(action_plan_t)) == 0)
         return;
 
-    /* ② 确认变了之后, 才停止定时器 */
+    // 时间变化，先停止定时器，防止回调读到半成品数据
     rt_timer_stop(&led_timer);
     rt_timer_stop(&beep_timer);
 
-    /* TODO: ③ 写入 current_plan 和 last_plan */
+    //last_plan用于定时器回调读取，current_plan用于事件判断
     rt_memcpy(&current_plan, new_plan, sizeof(action_plan_t));
     rt_memcpy(&last_plan,    new_plan, sizeof(action_plan_t));
-    /* TODO: ④ LED 分支 (blink ? PERIODIC : 常亮) */
+    // LED 三分支 (blink / on / off)
         if (current_plan.led.blink)
     {
         led_phase = 1;
@@ -264,24 +243,24 @@ static void dispatch_plan(const action_plan_t *new_plan)
     {
         drv_led_write(current_plan.led.r_on, current_plan.led.g_on, current_plan.led.b_on);
     }
-    /* TODO: ⑤ Beep 三分支 (is_mute / on_ms==0 / 状态机) */
-    /* 状态机重置: 切换 plan 时必须清零, 否则旧状态影响新状态 */
+    //Beep 三分支 (is_mute / on_ms==0 / 状态机)
+    //状态机重置: 切换 plan 时必须清零, 否则旧状态影响新状态
     beep_count = 0;
     beep_phase = 0;
 
     if(current_plan.beep.is_mute)
     {
-        /* 分支 1: 静音 (SAFE) */
+        //分支 1: 静音 (SAFE) 
         drv_beep_freq(0);
     }
     else if (!current_plan.beep.on_ms)
     {
-        /* 分支 2: 持续长鸣 (SUPERVISOR_LOST) */
+        //分支 2: 持续长鸣 (SUPERVISOR_LOST) 
         drv_beep_freq(current_plan.beep.pwm_freq);
     }
     else
     {
-        /* 分支 3: 启动状态机定时器 (WARNING/DANGER/HARDFAULT) */
+        //分支 3: 启动状态机定时器 (WARNING/DANGER/HARDFAULT)
         drv_beep_freq(current_plan.beep.pwm_freq);
         t = ms_to_tick_safe(current_plan.beep.on_ms);
         rt_timer_control(&beep_timer, RT_TIMER_CTRL_SET_TIME, &t);
@@ -296,7 +275,8 @@ void actuator_thread_entry(void *parameter)
     monitor_msg_t local;
     uint8_t     supervisor_lost;
     const action_plan_t *plan;
-    static rt_tick_t last_report_tick = 0;  /* 栈诊断报告计时 */
+    //栈诊断报告计时
+    static rt_tick_t last_report_tick = 0;  
 #ifdef USE_PERF
     static rt_tick_t last_perf_tick = 0;
 #endif
@@ -307,19 +287,20 @@ void actuator_thread_entry(void *parameter)
     rt_timer_init(&beep_timer, "act_beep", beep_timer_callback, RT_NULL,
                   1, RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
 
-    /* ===== 0xFF 哨兵: 防止因与表内数据重合而误触 ===== */
+    //初始化，防止last_plan因与表内数据重合而误触 
     rt_memset(&last_plan, 0xFF, sizeof(action_plan_t));
     dispatch_plan(&g_policy_table[POLICY_SAFE]);
 
     while (1)
     {
 #ifdef USE_PERF
-        /* SAFE: perf_t0 在 recv 后计时，仅衡量实际执行耗时，不含阻塞等待 */
+        // 事件响应延迟: Supervisor发事件 → Actuator收到事件
         uint32_t perf_evt_us = 0;
+        // 端到端延迟: Acquire收DMA数据 → Actuator执行动作
         uint32_t perf_e2e_us = 0;
 #endif
 
-         /* L1: 带超时等待 Supervisor 告警事件 (500ms 超时, 非永久阻塞) */
+         // 等待 Supervisor 告警事件 (500ms 超时) 
         rt_event_recv(&adc_event,
                       EVT_SAFE | EVT_WARNING | EVT_DANGER | EVT_HARDFAULT,
                       RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
@@ -332,19 +313,18 @@ void actuator_thread_entry(void *parameter)
         perf_e2e_us = perf_get_e2e_latency_us();
 #endif
 
-        /* L1: 无论事件是否超时都读快照 (timestamp 陈旧度判断用) */
+        // 复制当前状态用于后续动作执行
         rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
         rt_memcpy(&local, &monitor_msg, sizeof(monitor_msg_t));
         rt_mutex_release(sensor_mutex);
 
-        /* L1: 真正失联判据是 supervisor_heartbeat 字段陈旧度 */
+        //  通过supervisor_heartbeat 判断 Supervisor 是否超时
         supervisor_lost = ((rt_tick_get() - local.supervisor_heartbeat) >
                             SUPERVISOR_TIMEOUT_TICKS);
 
-        /* L2: 查表 */
+        // 查表
         plan = resolve_policy(local.alarm_level, supervisor_lost);
 
-        /* L3: 幂等分发 */
         dispatch_plan(plan);
 
 #ifdef USE_PERF

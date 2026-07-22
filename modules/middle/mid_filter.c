@@ -10,7 +10,7 @@
 //文件内容：算法
 #include "mid_filter.h"
 
-// SAFE: 查表法 — MF52A 103F3950 NTC (10kΩ上拉, B=3950)  ADC→温度映射
+// 查表法 — MF52A 103F3950 NTC (10kΩ上拉, B=3950)  ADC→温度映射
 #define T_ADC_STEP  256
 #define T_LUT_LEN   17
 static const uint16_t t_adc_lut[T_LUT_LEN] = { 0, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4095 };
@@ -27,7 +27,7 @@ uint16_t fast_filing(uint16_t *data_start, uint16_t len)
 
   for (int i = 0; i < len; i++)
   {
-    uint16_t val = data_start[i];  // SAFE: 修复: 使用实际数据而非通道索引
+    uint16_t val = data_start[i];  // 使用实际数据而非通道索引
     sum += val;
 
     if (val > max_val)
@@ -39,7 +39,7 @@ uint16_t fast_filing(uint16_t *data_start, uint16_t len)
         min_val = val;
     }
   }
-  return (uint16_t)((sum - max_val - min_val) / (len - 2));  // SAFE: 修复: 返回值类型应为 uint16_t 而非 uint16_t*
+  return (uint16_t)((sum - max_val - min_val) / (len - 2));
   
 }
 

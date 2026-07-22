@@ -11,7 +11,7 @@
 #define MODULES_DRIVERS_BSP_PERF_H_
 
 /* ---- 数据测试 开关 ---- */
-/* SAFE: 由 bsp_perf.h 统一管理，注释此行即可关闭性能统计，Release 零开销 */
+/* 由 bsp_perf.h 统一管理，注释此行即可关闭性能统计，Release 零开销 */
 #define USE_PERF
 
 #include <stdint.h>

@@ -38,7 +38,7 @@ uint16_t *adc_get_shadow_buf(void)
 
 /**
  * @brief DMA半传输完成回调（前半段 128 元素就绪）
- *        SAFE: 仅做 memcpy + 置标志 + 释放信号量，无阻塞操作
+ *        仅做 memcpy + 置标志 + 释放信号量，无阻塞操作
  */
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 {
@@ -46,7 +46,7 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
     {
         /* 冻结前半段 [0..HALF_BUF_SZ-1] 到影子缓冲区前半 */
         memcpy(adc_shadow_buf, adc_raw_buf, HALF_BUF_SZ * sizeof(uint16_t));
-        shadow_ready_half = 0;  // SAFE: 前半段就绪
+        shadow_ready_half = 0;  // 前半段就绪
       
         /* 通知 acquire 线程处理 */
         rt_sem_release(alarm_sem);
@@ -55,7 +55,7 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 
 /**
  * @brief DMA全传输完成回调（后半段 128 元素就绪）
- *        SAFE: 仅做 memcpy + 置标志 + 释放信号量，无阻塞操作
+ *        仅做 memcpy + 置标志 + 释放信号量，无阻塞操作
  *        Circular DMA 永不停止，由硬件自动翻转
  */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
@@ -65,7 +65,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
         /* 冻结后半段 [HALF_BUF_SZ..FULL_BUF_SZ-1] 到影子缓冲区后半 */
         memcpy(adc_shadow_buf + HALF_BUF_SZ, adc_raw_buf + HALF_BUF_SZ,
                HALF_BUF_SZ * sizeof(uint16_t));
-        shadow_ready_half = 1;  // SAFE: 后半段就绪
+        shadow_ready_half = 1;  // 后半段就绪
 
         /* 通知 acquire 线程处理 */
         rt_sem_release(alarm_sem);
