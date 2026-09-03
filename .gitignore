@@ -4,14 +4,12 @@
 .cproject
 .project
 .settings/
+.vscode/
 
-# 第三方工具
-.kilo/
+# 第三方工具缓存
 .mimocode/
 .kilocodeignore
-
-# VS Code
-.vscode/
+.kilo/
 
 # 临时脚本
 sconscript_update.bat
@@ -35,8 +33,8 @@ packages/pkgs.json
 packages/pkgs_error.json
 rt-thread/
 
-# STM32 HAL ��
+# STM32 HAL 库
 libraries/
 
-# �����ƻ�
+# 工作计划
 plans/

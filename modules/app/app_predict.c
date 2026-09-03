@@ -31,7 +31,8 @@ static rt_thread_t Logic_thread3 = RT_NULL;
 void Logic_thread3_entry(void *parameter)
 {
     static uint8_t  first_frame = 1;         //冷启动标志
-    static uint16_t stuck_cnt = 0;           //ADC卡死计数器
+    static uint16_t v_stuck_cnt = 0;         //电压通道独立卡死计数器(与温度解耦,避免阶段转换互相清零)
+    static uint16_t t_stuck_cnt = 0;         //温度通道独立卡死计数器
     static uint8_t  first_write_done = 0;    //首次写入完成标志
 
     /* ===== 滤波状态变量 ===== */
@@ -74,6 +75,8 @@ void Logic_thread3_entry(void *parameter)
             dv_iir_state = 0.0f;
             v_ref = raw_volt;
             freeze_cnt = 0;
+            v_stuck_cnt = 0;
+            t_stuck_cnt = 0;
             first_frame = 0;
             {
                 int ti = (int)raw_temp;
@@ -107,25 +110,40 @@ void Logic_thread3_entry(void *parameter)
             raw_volt <= P.volt_fault_lo || raw_volt >= P.volt_fault_hi)
         {
             fault_flag = 1;
-            stuck_cnt = 0;
+            v_stuck_cnt = 0;
+            t_stuck_cnt = 0;
         }
         else
         {
-            /* ADC 卡死检测（阈值收紧：仅真正死机才触发） */
+            /* ADC 卡死检测：电压/温度双计数器独立判定
+             * 解耦原因：单计数器要求两通道同时静止，场景阶段转换时任一通道跳变
+             * 会把另一通道的累计清零，导致真卡死被反复重置、检测延迟被拉长(EXP05 70.4s)。
+             * 改为任一通道持续静止达阈值即判定卡死(EXP05 预期 55.25s)。 */
             float dv = raw_volt - v_fast;
             float dt = raw_temp - t_smooth;
 
-            if (dv > -0.0001f && dv < 0.0001f && dt > -0.001f && dt < 0.001f)
+            /* 电压通道独立计数 */
+            if (dv > -0.0001f && dv < 0.0001f)
             {
-                stuck_cnt++;
-                if (stuck_cnt >= P.stuck_threshold)
-                {
+                v_stuck_cnt++;
+                if (v_stuck_cnt >= P.stuck_threshold)
                     fault_flag = 2;
-                }
             }
             else
             {
-                stuck_cnt = 0;
+                v_stuck_cnt = 0;
+            }
+
+            /* 温度通道独立计数 */
+            if (dt > -0.001f && dt < 0.001f)
+            {
+                t_stuck_cnt++;
+                if (t_stuck_cnt >= P.stuck_threshold)
+                    fault_flag = 2;
+            }
+            else
+            {
+                t_stuck_cnt = 0;
             }
         }
 
