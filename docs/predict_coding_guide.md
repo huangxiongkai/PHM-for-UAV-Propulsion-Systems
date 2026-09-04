@@ -2,7 +2,7 @@
 
 ## 1. 项目背景概述
 
-本模块运行于 **STM32F103 + RT-Thread Nano** 平台，通过 ADC 循环采样（12.658kHz, 64点/批 ≈ 5ms/cycle）采集电池电压与 NTC 温度信号，执行**去极值滤波 → 物理量转换 → 瞬态趋势预测（IIR/微分/双时间尺度）→ 多级滞回判决（Supervisor）→ 蜂鸣器告警（Actuator）** 的全链路。
+本模块运行于 **STM32F103 + RT-Thread Nano** 平台，通过 ADC 循环采样（约12.82kHz, 64点/批 ≈ 5ms/cycle）采集电池电压与 NTC 温度信号，执行**去极值滤波 → 物理量转换 → 瞬态趋势预测（IIR/微分/双时间尺度）→ 多级滞回判决（Supervisor）→ 蜂鸣器告警（Actuator）** 的全链路。
 
 ### 线程拓扑
 
@@ -24,7 +24,7 @@
                                   ┌──────────────────┐
                                   │ app_actuator.c    │
                                   │ (优先级 11, 512B) │
-                                  │ 蜂鸣器/油门限制    │
+                                  │ LED/蜂鸣器告警     │
                                   └──────────────────┘
 
 ┌──────────────────┐
@@ -108,7 +108,7 @@ typedef struct {
 | `modules/middle/mid_databus.h` | ✅ 已更新 | `monitor_msg_t`(11字段,含timestamp)、事件位定义(含EVT_HARDFAULT)、IPC extern声明 |
 | `modules/middle/mid_databus.c` | ✅ 已更新 | IPC对象创建：MQ池、事件集、信号量 |
 | `modules/middle/mid_filter.c/.h` | ✅ 已冻结 | `fast_filing`(64点去极值)、`Pot_To_SimBatteryVol`(电位器→电压)、`calculate_temp`(查表→温度，已反转ADC方向)、`median3`、`iir_lpf` |
-| `modules/drivers/bsp_adc.c/.h` | ✅ 已冻结 | DMA双缓冲(12.658kHz)、影子缓冲、半满中断信号量 |
+| `modules/drivers/bsp_adc.c/.h` | ✅ 已冻结 | DMA双缓冲(约12.82kHz)、影子缓冲、半满中断信号量 |
 | `modules/drivers/bsp_throttle.c/.h` | ✅ 已实现(占位) | `throttle_read()` 返回1000(空载) |
 | `modules/drivers/bsp_beep.c/.h` | ✅ 已就绪 | PWM蜂鸣器 fast/slow/stop 接口 |
 | `modules/app/app_acquire.c` | ✅ 完成 | 信号量等待→数据提取→去极值滤波→物理量转换→MQ发送(5ms周期) |
@@ -229,8 +229,8 @@ app_predict.c  ──┬── float_clamp(val, lo, hi)
 | 参数 | 值 | 含义 |
 |------|-----|------|
 | `SAMPLE_COUNT` | 64 | 每批ADC采样点数 |
-| ADC 采样率 | 12.658 kHz | DMA时钟配置 |
-| 批次周期 | ~5.057ms (≈200Hz) | 64/12658 |
+| ADC 采样率 | 约 12.82 kHz | TIM3 触发（PSC=71, ARR=77） |
+| 批次周期 | ~5.00ms (≈200Hz) | 64/12820 |
 | `PREDICT_DT` | 0.005f | 微分周期(s) |
 | `temp_iir_alpha` | 0.08 | 温度一次IIR平滑系数 |
 | `temp_diff_alpha` | 0.06 | 温度微分二次IIR系数 |

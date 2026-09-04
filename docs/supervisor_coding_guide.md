@@ -246,26 +246,26 @@ if (evt_bit == EVT_HARDFAULT)
     {
         case FAULT_PREDICT_INIT:
         case FAULT_PREDICT_LOST:
-            /* Predict故障: 蜂鸣器急促，不限制油门 */
+            /* Predict故障: 蜂鸣器急促提示 */
             beep_fast();
             break;
         case FAULT_SENSOR:
-            /* 传感器故障: 蜂鸣器持续，不限制油门 */
+            /* 传感器故障: 蜂鸣器持续提示 */
             beep_slow();
             break;
         case FAULT_OVERTEMP:
-            /* 过温: 蜂鸣器持续，限制油门 */
+            /* 过温: 蜂鸣器持续提示 */
             beep_slow();
-            // throttle_limit(50);
             break;
         case FAULT_UNDERVOLT:
-            /* 欠压: 蜂鸣器急促，强制降落信号 */
+            /* 欠压: 蜂鸣器急促提示 */
             beep_fast();
-            // throttle_limit(0);
             break;
     }
 }
 ```
+
+> 注：当前版本只做蜂鸣器/LED 声光提示，不存在 `throttle_limit()` 之类的油门控制接口；限油门、自动降落等动力处置属于后续规划，未实现。
 
 ### 6.4 修改影响范围
 
