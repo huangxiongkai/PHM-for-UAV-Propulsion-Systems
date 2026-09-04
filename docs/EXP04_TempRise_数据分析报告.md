@@ -19,7 +19,7 @@
 | Early Warning 提前量 | ≥2s | 0s（无中间态） | **3.7s** ✅ |
 | WARNING 触发温度 | ~95°C | 未触发 | **94°C（t=24.6s）** ✅ |
 | 实测温升速率 | 3.0°C/s（注入值） | — | **2.69°C/s**（滤波后有效值） |
-| Protection Time | < 1ms | ~142µs ✅ | ~145µs ✅ |
+| Alarm Output Time | < 1ms | ~142µs ✅ | ~145µs ✅ |
 
 ### 修复内容
 
@@ -129,13 +129,13 @@ TRisk = 变化率项 + 绝对温度项
 | Actuator（正常） | < 200µs | 32µs | 33µs | ✅ |
 | Actuator（事件处理） | < 200µs | 142µs | 142µs | ✅ |
 
-### 5.2 Protection Response Time
+### 5.2 Alarm Output Response Time
 
 | 阶段 | 耗时 | 构成 |
 |------|------|------|
 | Detection Time | ~23.3s | 物理响应 + IIR 滤波收敛 + SlewLimit + HI 计算延迟 |
 | Decision Time | ~20ms | Supervisor 20ms 周期 |
-| Protection Time | **145µs** | Event 接收 + 查表 + GPIO/PWM 硬件操作 |
+| Alarm Output Time | **145µs** | Event 接收 + 查表 + GPIO/PWM 硬件操作 |
 
 ---
 
@@ -330,10 +330,10 @@ Time(s)  Volt    Temp    dtTem   DropR   TRisk  ALM
 | 验证项 | 预期 | 实测（POST-fix） | 判定 |
 |--------|------|-----------------|------|
 | 实测温升速率 | 3.0°C/s (注入) | **2.69°C/s** (滤波后有效值) | ✅ |
-| 过温保护 HARDFAULT 触发 | ≤120°C | 105.3°C | ✅ |
+| 过温硬故障 HARDFAULT 触发 | ≤120°C | 105.3°C | ✅ |
 | 状态转移链 | SAFE→WARNING→HARDFAULT | SAFE→WARNING→HARDFAULT | ✅ |
 | Early Warning 提前量 | > 2s | **3.7s** | ✅ |
-| Protection Time | < 1ms | 145µs | ✅ |
+| Alarm Output Time | < 1ms | 145µs | ✅ |
 | 堆栈安全 | < 50% | 最高 46% | ✅ |
 | 实时性能 | 各线程 < 预算 | 最大 95µs（正常工况） | ✅ |
 
@@ -346,7 +346,7 @@ Testbench 注入速率为 +3.0°C/s，但实测有效温升速率仅 **2.69°C/s
 
 **工程意义**：真实传感器噪声 + 滤波叠加后，PHM 的实际响应性能比纯理论分析保守 10%。设计时已在参数中预留相应裕量（TRisk 斜率 K_TEMP=2.0、绝对项斜率 0.5 均按滤波后预期设置）。
 
-**总结**：系统过温保护功能正常，PHM 提前预警能力验证通过。Early Warning 提前量 3.7 秒，为系统争取了充足的应急响应时间，符合 PHM Society 标准对"退化早期检测"的能力要求。
+**总结**：系统过温检测与告警功能正常，提前预警能力得到验证：Early Warning 提前量约 3.7 秒，为人工处置争取了应急响应时间。
 
 ---
 

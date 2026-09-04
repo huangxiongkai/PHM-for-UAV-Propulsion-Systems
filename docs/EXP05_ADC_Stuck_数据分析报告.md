@@ -326,15 +326,15 @@ if (v_stuck_cnt >= P.stuck_threshold || t_stuck_cnt >= P.stuck_threshold)
 | 平均值 | ~0% | ✅ 极轻载 |
 | 峰值 | 1.28% | ✅ 安全 |
 
-### 6.3 Protection Response Time（HARDFAULT 触发帧）
+### 6.3 Alarm Output Response Time（HARDFAULT 触发帧）
 
 | 阶段 | 耗时 |
 |------|------|
 | Detection Time（卡死累积） | 65.402s（由 stuck_threshold 决定） |
 | Decision Time（Supervisor 周期） | < 20ms |
-| Protection Time（Event→Actuator） | ~110µs（32µs → 142µs 跳变） |
+| Alarm Output Time（Event→Actuator） | ~110µs（32µs → 142µs 跳变） |
 
-**结论**：保护动作本身极快（~110µs），主要延迟来自 stuck_threshold 的帧数累积（65.4s）。
+**结论**：告警输出本身很快（~110µs），主要延迟来自 stuck_threshold 的帧数累积（65.4s）。
 
 ---
 

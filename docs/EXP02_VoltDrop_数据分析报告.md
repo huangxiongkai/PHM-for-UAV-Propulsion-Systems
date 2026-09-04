@@ -8,14 +8,14 @@
 
 ## 1. Executive Summary
 
-**结论**：EXP-02 快速掉压测试**通过**，Detection Latency=960ms，Total Response=1.6s，Protection Time=145µs。
+**结论**：EXP-02 快速掉压测试**通过**，Detection Latency=960ms，Total Response=1.6s，Alarm Output Time=145µs。
 
 | 指标 | 预期 | 实测 | 判定 |
 |------|------|------|------|
 | Detection Latency | < 1s | 960ms | ✅ |
 | Early Warning | > 0 | 649ms | ✅ |
 | Total Response | < 2s | 1.6s | ✅ |
-| Protection Time | < 1ms | 145µs | ✅ |
+| Alarm Output Time | < 1ms | 145µs | ✅ |
 
 **遗留问题**：
 - DropRatio 冷启动 > 1.0（建议 clamp）
@@ -30,7 +30,7 @@
 **测试范围**：
 - 故障类型：快速掉压（`TB_FAULT_VOLT_FAST_DROP`）
 - 注入起始时间：5.0s
-- 验证重点：Detection Latency、Early Warning、Protection Response Time
+- 验证重点：Detection Latency、Early Warning、Alarm Output Response Time
 
 ---
 
@@ -98,13 +98,13 @@ t=6.61s  HARDFAULT（V<16V → Fault Latch 锁存）
 | DANGER 阶段 | 可能出现 | 跳过（Fault Latch 优先级更高） | ✅ 符合设计 |
 | Fault Latch 锁存 | 首次故障不覆盖 | FCause=5 持续至结束 | ✅ 符合 |
 
-### 5.2 Protection Response Time
+### 5.2 Alarm Output Response Time
 
 | 阶段 | 定义 | 预期上限 | 实测值 | 判定 |
 |------|------|---------|--------|------|
 | Detection Time | 故障发生 → WARNING | < 1s | **960ms** | ✅ |
 | Decision Time | WARNING → HARDFAULT | — | **649ms** | — |
-| Protection Time | Event 收到 → LED/Beep 执行 | < 1ms | **~145µs** | ✅ |
+| Alarm Output Time | Event 收到 → LED/Beep 执行 | < 1ms | **~145µs** | ✅ |
 | **Total** | **故障注入 → HARDFAULT 稳定** | < 2s | **~1.6s** | ✅ |
 
 **Detection Time 分解**（960ms）：
@@ -178,8 +178,8 @@ t=6.82s  15.0V（钳位到下限，持续至结束）
 | 状态转移链 | SAFE → WARNING → HARDFAULT | 完整链路验证通过 | ✅ |
 | Detection Latency | < 1s | 960ms | ✅ |
 | Early Warning 提前量 | > 0（PHM 价值体现） | 649ms | ✅ |
-| Total Protection Response | < 2s | 1.6s | ✅ |
-| Protection Time | < 1ms | 145µs | ✅ |
+| Total Alarm Response | < 2s | 1.6s | ✅ |
+| Alarm Output Time | < 1ms | 145µs | ✅ |
 | Fault Latch 锁存 | 不覆盖 | FCause=5 持续至结束 | ✅ |
 | 堆栈安全 | < 50% | 最高 49% | ✅ |
 

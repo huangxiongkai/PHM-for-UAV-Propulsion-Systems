@@ -19,10 +19,10 @@
 | HARDFAULT 触发 | ≤120°C | 105.3°C（硬编码阈值） | ✅ |
 | 状态转移链 | SAFE→WARNING→DANGER→HARDFAULT | SAFE→**直接 HARDFAULT** | ❌ |
 | Early Warning 提前量 | > 0 | **0s**（无 WARNING） | ❌ |
-| 过温保护响应时间 | < 1ms | 142µs | ✅ |
+| 过温告警响应时间 | < 1ms | 142µs | ✅ |
 | 堆栈安全 | < 50% | 最高 47% | ✅ |
 
-**核心发现**：在 3°C/s 慢速升温场景下，TRisk 始终稳定在 ~3.6，HI ≈ 96.4，FSM 永远停在 SAFE，直到 t=28.3s 温度超过 105°C 才被过温硬保护直接跳到 HARDFAULT。
+**核心发现**：在 3°C/s 慢速升温场景下，TRisk 始终稳定在 ~3.6，HI ≈ 96.4，FSM 永远停在 SAFE，直到 t=28.3s 温度超过 105°C 才被过温硬故障阈值直接判定为 HARDFAULT。
 
 **→ 直接导出修复工作（EXP-04）**：新增 `temp_abs_threshold` + `temp_abs_slope` 双通道计算，修复后 Early Warning 提前量达到 **3.7s**。
 
@@ -129,7 +129,7 @@ HI = 100 - 3.6 - 0.0 = 96.4
 | 70°C | 3.0 | 3.6 | SAFE ❌ | WARNING |
 | 85°C | 3.0 | 3.6 | SAFE ❌ | WARNING |
 | 100°C | 3.0 | 3.6 | SAFE ❌ | DANGER |
-| 105°C | 3.8 | 5.3 | **HARDFAULT** | HARDFAULT（硬保护触发） |
+| 105°C | 3.8 | 5.3 | **HARDFAULT** | HARDFAULT（过温硬故障触发） |
 
 ---
 
