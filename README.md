@@ -176,7 +176,7 @@ static const transition_rule_t g_rules[] = {
 - 仅记录最先触发的故障，防止后续故障覆盖根因
 - 故障一旦锁存，需重启清除
 
-### 3. 告警执行策略 (app_actuator.c)
+### 4. 告警执行策略 (app_actuator.c)
 
 Actuator 线程实现 4 层架构：
 
