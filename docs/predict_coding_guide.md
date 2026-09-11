@@ -52,7 +52,7 @@ ADC DMA(双缓冲) → acquire(去极值均值 → 物理量转换) → MQ → p
 
 ### `monitor_msg_t` (mid_databus.h)
 
-完整字段（11个，天然32-bit对齐）：
+完整字段（13 个成员，天然 32-bit 对齐，含双线程心跳与故障根因字段）：
 
 ```c
 typedef struct {
@@ -63,11 +63,12 @@ typedef struct {
     float drop_ratio;        /* 归一化压降比 [0,1] */
     float temp_risk_contrib; /* 温度风险贡献 [0,50] */
     float drop_risk_contrib; /* 压降风险贡献 [0,50] */
-    uint32_t timestamp;      /* Predict写回时刻 (rt_tick_get) */
-    uint8_t alarm_level;     /* ALARM_SAFE / WARNING / DANGER / HARDFAULT */
+    uint8_t alarm_level;     /* ALARM_SAFE / ALARM_WARNING / ALARM_DANGER / ALARM_HARDFAULT */
     uint8_t hard_fault;      /* 位图: bit0=过温, bit1=欠压 */
-    uint8_t sensor_fault;    /* 0=正常, 1=NTC故障, 2=ADC卡死 */
-    uint8_t reserved;        /* 保留对齐 */
+    uint8_t sensor_fault;    /* 0=正常, 1=NTC故障, 2=ADC卡死, 3=电压传感器开路/短路 */
+    rt_tick_t timestamp;            /* Predict线程心跳时间戳 */
+    rt_tick_t supervisor_heartbeat; /* Supervisor线程心跳时间戳 */
+    uint8_t fault_cause;     /* 故障原因: fault_cause_t 枚举值 */
 } monitor_msg_t;
 ```
 
@@ -105,7 +106,7 @@ typedef struct {
 
 | 文件 | 状态 | 内容 |
 |------|------|------|
-| `modules/middle/mid_databus.h` | ✅ 已更新 | `monitor_msg_t`(11字段,含timestamp)、事件位定义(含EVT_HARDFAULT)、IPC extern声明 |
+| `modules/middle/mid_databus.h` | ✅ 已更新 | `monitor_msg_t`(13成员,含双心跳时间戳与fault_cause)、事件位定义(含EVT_HARDFAULT)、IPC extern声明 |
 | `modules/middle/mid_databus.c` | ✅ 已更新 | IPC对象创建：MQ池、事件集、信号量 |
 | `modules/middle/mid_filter.c/.h` | ✅ 已冻结 | `fast_filing`(64点去极值)、`Pot_To_SimBatteryVol`(电位器→电压)、`calculate_temp`(查表→温度，已反转ADC方向)、`median3`、`iir_lpf` |
 | `modules/drivers/bsp_adc.c/.h` | ✅ 已冻结 | DMA双缓冲(约12.82kHz)、影子缓冲、半满中断信号量 |
@@ -115,8 +116,8 @@ typedef struct {
 | `modules/app/app_predict.c` | ✅ **完成** | **7阶段管线：冷启动→自检→Median3→温度链→电压链→油门迟滞→写回** |
 | `modules/app/app_predict.h` | ✅ 完成 | `predict_param_t` 结构体 + `P` 常量实例 |
 | `modules/app/app_display.c` | ✅ 完成 | 互斥量保护读取 + 手动整数/小数拆分打印(100ms) |
-| `modules/app/app_supervisor.c` | 🔴 待实现 | 9层管线：快照→冷启动→HI计算→条件保持→表驱动FSM→故障锁存→告警融合→边沿事件→看门狗预留 |
-| `modules/app/app_actuator.c` | 🔴 待实现 | 事件等待 + 蜂鸣器控制 |
+| `modules/app/app_supervisor.c` | ✅ 完成 | 9层管线：快照→冷启动→HI计算→条件保持→表驱动FSM→故障锁存→告警融合→边沿事件→看门狗预留 |
+| `modules/app/app_actuator.c` | ✅ 完成 | 事件等待 + 策略查表 + 幂等分发 + 蜂鸣器/LED控制 |
 
 ---
 

@@ -98,14 +98,16 @@ typedef struct {
     float drop_ratio;        /* 归一化压降比 [0,1] */
     float temp_risk_contrib; /* 温度风险贡献 [0,50] */
     float drop_risk_contrib; /* 压降风险贡献 [0,50] */
-    uint8_t alarm_level;     /* ALARM_SAFE / WARNING / DANGER / HARDFAULT */
+    uint8_t alarm_level;     /* ALARM_SAFE / ALARM_WARNING / ALARM_DANGER / ALARM_HARDFAULT */
     uint8_t hard_fault;      /* 位图: bit0=过温, bit1=欠压 */
-    uint8_t sensor_fault;    /* 0=正常, 1=NTC故障, 2=ADC卡死 */
-    rt_tick_t timestamp;     /* Predict写回时刻 (rt_tick_get) */
+    uint8_t sensor_fault;    /* 0=正常, 1=NTC故障, 2=ADC卡死, 3=电压传感器开路/短路 */
+    rt_tick_t timestamp;            /* Predict线程心跳时间戳 */
+    rt_tick_t supervisor_heartbeat; /* Supervisor线程心跳时间戳 */
+    uint8_t fault_cause;     /* 故障原因: fault_cause_t 枚举值 */
 } monitor_msg_t;
 ```
 
-**当前大小**: 36 字节（7×4 float + 3×1 uint8 + 4 rt_tick_t = 35，对齐到 36）
+**当前大小**: 40 字节（7×4 float + 4×1 uint8 + 2×4 rt_tick_t = 40）
 
 ---
 
