@@ -113,7 +113,7 @@ typedef struct {
 | `modules/drivers/bsp_throttle.c/.h` | ✅ 已实现(占位) | `throttle_read()` 返回1000(空载) |
 | `modules/drivers/bsp_beep.c/.h` | ✅ 已就绪 | PWM蜂鸣器 fast/slow/stop 接口 |
 | `modules/app/app_acquire.c` | ✅ 完成 | 信号量等待→数据提取→去极值滤波→物理量转换→MQ发送(5ms周期) |
-| `modules/app/app_predict.c` | ✅ **完成** | **7阶段管线：冷启动→自检→Median3→温度链→电压链→油门迟滞→写回** |
+| `modules/app/app_predict.c` | ✅ **完成** | **6阶段管线：冷启动→自检→Median3→温度链→电压链(含油门迟滞)→写回** |
 | `modules/app/app_predict.h` | ✅ 完成 | `predict_param_t` 结构体 + `P` 常量实例 |
 | `modules/app/app_display.c` | ✅ 完成 | 互斥量保护读取 + 手动整数/小数拆分打印(100ms) |
 | `modules/app/app_supervisor.c` | ✅ 完成 | 9层管线：快照→冷启动→HI计算→条件保持→表驱动FSM→故障锁存→告警融合→边沿事件→看门狗预留 |
@@ -138,7 +138,7 @@ static inline float float_clamp(float val, float lo, float hi)
 }
 ```
 
-### 4.2 7阶段流水线
+### 4.2 6阶段流水线
 
 ```
 MQ接收(msg_local)
@@ -179,7 +179,7 @@ MQ接收(msg_local)
 | 参数 | 值 |
 |------|-----|
 | 线程名 | `Logic_thread3` |
-| 优先级 | 9 (低于 acquire 的 8，高于 supervisor 的 10) |
+| 优先级 | 9（低于 Acquire，高于 Supervisor） |
 | 栈大小 | 1536 字节 |
 | 节拍 | 20ms |
 | 创建方式 | `rt_thread_create`（动态） |

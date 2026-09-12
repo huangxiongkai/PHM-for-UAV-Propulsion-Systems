@@ -19,13 +19,12 @@
 | Layer7 | Alarm Fusion (每轮同步alarm_level) | ✅ 完成 |
 | Layer8 | Event Publish (边沿触发, rt_uint32_t evt_bit) | ✅ 完成 |
 | Layer9 | Watchdog Qualification | 🔴 待实现 |
-| — | 故障原因记录 (fault_cause) | 🔴 待实现 |
+| — | 故障原因记录 (fault_cause) | ✅ 完成 |
 
-### 🔴 待实现（V2.2 升级）
+### 🔴 待实现
 
 | 项目 | 说明 |
 |------|------|
-| 故障原因传递 | Layer6 记录具体故障源，通过 monitor_msg.fault_cause 传递给 Actuator |
 | 看门狗喂狗 | Layer9 检测各线程心跳，决定是否喂 IWDG |
 
 ---
@@ -124,173 +123,25 @@ typedef struct {
 
 ---
 
-## 六、V2.2 升级方案：故障原因传递
+## 六、故障原因与锁存机制（已实现）
 
-### 6.1 问题背景
+Supervisor 在故障锁存（Layer6）阶段记录最先触发的故障根因，写入 `monitor_msg.fault_cause` 并传递给 Actuator，用于告警差异化展示。
 
-当前 Layer6 只设置 `fault_latched = 1`，无法区分故障源：
+### fault_cause_t 取值（mid_databus.h）
 
-| 故障源 | 语义 | 当前表现 |
-|--------|------|---------|
-| Predict 启动超时 | 信号量 500ms 超时 | `ALARM_HARDFAULT`，无细分 |
-| Predict 运行中卡死 | timestamp 停止更新 | `ALARM_HARDFAULT`，无细分 |
-| sensor_fault != 0 | ADC卡死 / NTC故障 | `ALARM_HARDFAULT`，无细分 |
-| hard_fault bit0 | 过温 (>105℃) | `ALARM_HARDFAULT`，无细分 |
-| hard_fault bit1 | 欠压 (<16V) | `ALARM_HARDFAULT`，无细分 |
+| 值 | 枚举 | 触发条件 |
+|:---|:---|:---|
+| 0 | FAULT_NONE | 无故障 |
+| 1 | FAULT_PREDICT_INIT | Predict 启动超时（信号量等待 500ms 超时） |
+| 2 | FAULT_PREDICT_LOST | Predict 运行卡死（心跳时间戳 200ms 未刷新） |
+| 3 | FAULT_SENSOR | 传感器故障（sensor_fault ≠ 0） |
+| 4 | FAULT_OVERTEMP | 过温（hard_fault bit0） |
+| 5 | FAULT_UNDERVOLT | 欠压（hard_fault bit1） |
 
-Actuator 无法根据故障类型做差异化响应。
+### 锁存规则
 
-### 6.2 设计方案
-
-#### 6.2.1 新增故障原因枚举（mid_databus.h）
-
-```c
-/* ---------- 故障原因（Supervisor → Actuator） ---------- */
-typedef enum {
-    FAULT_NONE          = 0,  /* 无故障 */
-    FAULT_PREDICT_INIT  = 1,  /* Predict启动超时(信号量) */
-    FAULT_PREDICT_LOST  = 2,  /* Predict运行时卡死(时间戳) */
-    FAULT_SENSOR        = 3,  /* 传感器故障(sensor_fault!=0) */
-    FAULT_OVERTEMP      = 4,  /* 过温(hard_fault bit0) */
-    FAULT_UNDERVOLT     = 5,  /* 欠压(hard_fault bit1) */
-} fault_cause_t;
-```
-
-#### 6.2.2 monitor_msg_t 新增字段
-
-```c
-typedef struct {
-    // ... 原有字段 ...
-    uint8_t reserved;        /* 保留对齐 */
-    uint8_t fault_cause;     /* fault_cause_t, 0=无故障 */
-} monitor_msg_t;
-```
-
-**结构体大小变化**: 36 → 40 字节
-
-#### 6.2.3 Supervisor 新增静态变量
-
-```c
-static fault_cause_t fault_cause = FAULT_NONE;
-```
-
-#### 6.2.4 Layer6 改造：记录最先触发的故障原因
-
-```c
-/* 故障锁存：记录最早触发的原因，后续不覆盖 */
-if (!fault_latched)
-{
-    if (local.sensor_fault != 0)
-    {
-        fault_latched = 1;
-        fault_cause   = FAULT_SENSOR;
-    }
-    else if (local.hard_fault & 0x01)
-    {
-        fault_latched = 1;
-        fault_cause   = FAULT_OVERTEMP;
-    }
-    else if (local.hard_fault & 0x02)
-    {
-        fault_latched = 1;
-        fault_cause   = FAULT_UNDERVOLT;
-    }
-    else if ((rt_tick_get() - local.timestamp) > PREDICT_TIMEOUT_TICKS)
-    {
-        fault_latched = 1;
-        fault_cause   = FAULT_PREDICT_LOST;
-    }
-}
-```
-
-**设计选择**: 只记录**最先触发**的原因（`if (!fault_latched)` 保护），不被后续故障覆盖。排查 bug 时看 `fault_cause` 就知道根因。
-
-#### 6.2.5 Layer7 改造：同步 fault_cause 到 monitor_msg
-
-```c
-/* ===== Layer7: 告警融合 + 故障原因同步 ===== */
-uint8_t final_alarm;
-if (fault_latched)
-    final_alarm = ALARM_HARDFAULT;
-else
-    final_alarm = health_state;
-
-/* 同步alarm_level + fault_cause到monitor_msg */
-rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
-monitor_msg.alarm_level = final_alarm;
-monitor_msg.fault_cause = (uint8_t)fault_cause;
-rt_mutex_release(sensor_mutex);
-```
-
-#### 6.2.6 信号量超时处设置原因
-
-```c
-/* 主循环之前 */
-if (rt_sem_take(predict_ready_sem, 500) != RT_EOK)
-{
-    fault_latched = 1;
-    fault_cause   = FAULT_PREDICT_INIT;
-}
-```
-
-### 6.3 Actuator 差异化响应（可选）
-
-Actuator 目前是事件驱动，如需读 `fault_cause` 则需额外读 `monitor_msg`：
-
-```c
-if (evt_bit == EVT_HARDFAULT)
-{
-    rt_mutex_take(sensor_mutex, RT_WAITING_FOREVER);
-    uint8_t cause = monitor_msg.fault_cause;
-    rt_mutex_release(sensor_mutex);
-
-    switch (cause)
-    {
-        case FAULT_PREDICT_INIT:
-        case FAULT_PREDICT_LOST:
-            /* Predict故障: 蜂鸣器急促提示 */
-            beep_fast();
-            break;
-        case FAULT_SENSOR:
-            /* 传感器故障: 蜂鸣器持续提示 */
-            beep_slow();
-            break;
-        case FAULT_OVERTEMP:
-            /* 过温: 蜂鸣器持续提示 */
-            beep_slow();
-            break;
-        case FAULT_UNDERVOLT:
-            /* 欠压: 蜂鸣器急促提示 */
-            beep_fast();
-            break;
-    }
-}
-```
-
-> 注：当前版本只做蜂鸣器/LED 声光提示，不存在 `throttle_limit()` 之类的油门控制接口；限油门、自动降落等动力处置属于后续规划，未实现。
-
-### 6.4 修改影响范围
-
-| 文件 | 改动量 | 风险 |
-|------|--------|------|
-| `mid_databus.h` | +枚举定义 +1字段 | 低，结构体大小 36→40 |
-| `mid_databus.c` | +1 初始化值 | 无 |
-| `app_supervisor.c` | +1 静态变量，Layer6/Layer7 改写 | 中，FSM 不变 |
-| `app_actuator.c` | 可选扩展 | 无，不影响现有逻辑 |
-| `app_predict.c` | 无改动 | — |
-
-### 6.5 验证矩阵
-
-| 场景 | 预期 `fault_cause` | 预期 `alarm_level` |
-|------|-------------------|-------------------|
-| 正常启动 | `FAULT_NONE (0)` | `SAFE` |
-| Predict 500ms 未响应 | `FAULT_PREDICT_INIT (1)` | `HARDFAULT` |
-| Predict 运行中卡死 | `FAULT_PREDICT_LOST (2)` | `HARDFAULT` |
-| NTC 故障 | `FAULT_SENSOR (3)` | `HARDFAULT` |
-| 温度超过 105℃ | `FAULT_OVERTEMP (4)` | `HARDFAULT` |
-| 电压低于 16V | `FAULT_UNDERVOLT (5)` | `HARDFAULT` |
-
----
+- 多故障并发时**只记录最先触发者**，后续故障不覆盖根因字段，避免竞态导致根因丢失
+- 锁存后 `fault_cause` 保持不变，直到系统重启清除
 
 ## 七、V2.2 升级方案：看门狗设计（Layer9）
 
